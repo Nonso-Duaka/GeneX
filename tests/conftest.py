@@ -9,11 +9,11 @@ if str(ROOT) not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache(tmp_path, monkeypatch):
-    """Use a throwaway SQLite cache for every test."""
+def isolated_cache(monkeypatch):
+    """Use a throwaway in-memory cache for every test."""
     from backend import cache as cache_module
 
-    fresh = cache_module.Cache(path=tmp_path / "test_cache.db", ttl=60)
+    fresh = cache_module.Cache(ttl=60)
     monkeypatch.setattr(cache_module, "cache", fresh)
 
     from backend.utils import http as http_module

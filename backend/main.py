@@ -19,7 +19,7 @@ from backend.models.schemas import (
 from backend.services import civic_service, gene_service, pdb_service, protein_service
 from backend.utils.http import close_client
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+FRONTEND_DIR = Path(__file__).parent.parent / "public"
 
 
 @asynccontextmanager
@@ -150,4 +150,4 @@ if FRONTEND_DIR.exists():
     async def index():
         return FileResponse(FRONTEND_DIR / "index.html")
 
-    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
