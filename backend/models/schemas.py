@@ -25,11 +25,22 @@ class Structure(BaseModel):
     organism: Optional[str] = None
 
 
+class Drug(BaseModel):
+    chembl_id: str
+    name: str
+    max_phase: int
+    phase_label: str
+    action_type: Optional[str] = None
+    mechanism: Optional[str] = None
+
+
 class TargetResult(BaseModel):
     gene: Gene
     protein: Optional[Protein] = None
     structures: list[Structure] = Field(default_factory=list)
     best_structure: Optional[Structure] = None
+    drugs: list[Drug] = Field(default_factory=list)
+    top_drug: Optional[Drug] = None
 
 
 class SearchResponse(BaseModel):

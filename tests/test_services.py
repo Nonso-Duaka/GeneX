@@ -2,7 +2,13 @@ import httpx
 import pytest
 import respx
 
-from backend.services import civic_service, gene_service, pdb_service, protein_service
+from backend.services import (
+    civic_service,
+    drug_service,
+    gene_service,
+    pdb_service,
+    protein_service,
+)
 
 
 @pytest.mark.asyncio
@@ -180,3 +186,58 @@ async def test_pdb_service_ranks_xray_above_em_and_by_resolution():
 
     ranked = await pdb_service.structures_for_protein("P00533")
     assert [s["pdb_id"] for s in ranked] == ["7SI5", "1M14", "5UG9"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_drug_service_ranks_approved_above_clinical_and_drops_preclinical():
+    respx.get("https://www.ebi.ac.uk/chembl/api/data/target.json").mock(
+        return_value=httpx.Response(
+            200, json={"targets": [{"target_chembl_id": "CHEMBL1824"}]}
+        )
+    )
+    respx.get("https://www.ebi.ac.uk/chembl/api/data/mechanism.json").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "mechanisms": [
+                    {
+                        "molecule_chembl_id": "CHEMBL1336",
+                        "parent_molecule_chembl_id": "CHEMBL1336",
+                        "action_type": "INHIBITOR",
+                        "mechanism_of_action": "BRAF inhibitor",
+                    },
+                    {
+                        "molecule_chembl_id": "CHEMBL2103743",
+                        "parent_molecule_chembl_id": "CHEMBL2103743",
+                        "action_type": "INHIBITOR",
+                        "mechanism_of_action": "BRAF V600 inhibitor",
+                    },
+                    {
+                        "molecule_chembl_id": "CHEMBL999999",
+                        "parent_molecule_chembl_id": "CHEMBL999999",
+                        "action_type": "INHIBITOR",
+                        "mechanism_of_action": "preclinical compound",
+                    },
+                ]
+            },
+        )
+    )
+    molecules = {
+        "CHEMBL1336": {"molecule_chembl_id": "CHEMBL1336", "pref_name": "VEMURAFENIB", "max_phase": 4},
+        "CHEMBL2103743": {"molecule_chembl_id": "CHEMBL2103743", "pref_name": "DABRAFENIB", "max_phase": 3},
+        "CHEMBL999999": {"molecule_chembl_id": "CHEMBL999999", "pref_name": "EXAMPLE", "max_phase": 0},
+    }
+
+    def molecule_side_effect(request):
+        chembl_id = request.url.path.rstrip("/").split("/")[-1].replace(".json", "")
+        return httpx.Response(200, json=molecules[chembl_id])
+
+    respx.get(
+        url__regex=r"https://www\.ebi\.ac\.uk/chembl/api/data/molecule/.*"
+    ).mock(side_effect=molecule_side_effect)
+
+    drugs = await drug_service.drugs_for_protein("P15056")
+    assert [d["chembl_id"] for d in drugs] == ["CHEMBL1336", "CHEMBL2103743"]
+    assert drugs[0]["phase_label"] == "Approved"
+    assert drugs[1]["phase_label"] == "Phase 3"

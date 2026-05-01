@@ -175,6 +175,11 @@
     .badge.method-em { background: rgba(186,113,255,0.12); border-color: rgba(186,113,255,0.4); color: #c8a2ff; }
     .badge.method-nmr { background: rgba(63,185,80,0.12); border-color: rgba(63,185,80,0.4); color: #7ee787; }
     .badge.count { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+    .badge.phase-approved { background: rgba(63,185,80,0.18); border-color: rgba(63,185,80,0.5); color: #7ee787; }
+    .badge.phase-3 { background: rgba(210,153,34,0.15); border-color: rgba(210,153,34,0.5); color: #e3b341; }
+    .badge.phase-2, .badge.phase-1 { background: rgba(248,81,73,0.12); border-color: rgba(248,81,73,0.4); color: #ff7b72; }
+    .drug-cell { line-height: 1.3; }
+    .drug-name { font-weight: 500; }
     .gene-symbol { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-weight: 600; color: var(--accent); }
     .secondary-line { color: var(--muted); font-size: 0.78rem; margin-top: 0.15rem; }
     .empty-state {
@@ -283,7 +288,8 @@ const COLUMNS = [
   { key: 'pdb',        label: 'Best PDB' },
   { key: 'method',     label: 'Method' },
   { key: 'resolution', label: 'Resolution' },
-  { key: 'total',      label: 'Total' },
+  { key: 'topDrug',    label: 'Top Drug' },
+  { key: 'drugCount',  label: 'Drugs' },
 ];
 
 function buildParams() {
@@ -313,6 +319,13 @@ function rowFromTarget(t) {
     method: t.best_structure ? t.best_structure.method : null,
     resolution: t.best_structure && t.best_structure.resolution != null ? t.best_structure.resolution : null,
     total: t.structures.length,
+    topDrug: t.top_drug ? t.top_drug.name : null,
+    topDrugPhase: t.top_drug ? t.top_drug.max_phase : null,
+    topDrugLabel: t.top_drug ? t.top_drug.phase_label : null,
+    topDrugAction: t.top_drug ? t.top_drug.action_type : null,
+    topDrugChembl: t.top_drug ? t.top_drug.chembl_id : null,
+    drugCount: (t.drugs || []).length,
+    allDrugs: t.drugs || [],
   };
 }
 
@@ -337,7 +350,24 @@ function renderTable() {
     return `<th data-key="${c.key}" class="${isSorted ? 'sorted' : ''}">${c.label}<span class="sort-icon">${arrow}</span></th>`;
   }).join('');
 
-  const rowsHtml = sorted.map(r => `
+  const rowsHtml = sorted.map(r => {
+    const drugCellMissing = '<span style="color: var(--muted)">—</span>';
+    let drugCell = drugCellMissing;
+    if (r.topDrug) {
+      const phaseClass = r.topDrugPhase === 4 ? 'phase-approved'
+        : r.topDrugPhase === 3 ? 'phase-3'
+        : 'phase-' + r.topDrugPhase;
+      const tooltip = r.allDrugs.slice(0, 8).map(d => `${d.name} (${d.phase_label})`).join(' • ');
+      drugCell = `
+        <div class="drug-cell" title="${tooltip}">
+          <a class="drug-name" href="https://www.ebi.ac.uk/chembl/explore/compound/${r.topDrugChembl}" target="_blank">${r.topDrug}</a>
+          <div style="margin-top: 0.2rem;"><span class="badge ${phaseClass}">${r.topDrugLabel}</span>${r.topDrugAction ? ` <span class="secondary-line" style="display:inline">${r.topDrugAction.toLowerCase()}</span>` : ''}</div>
+        </div>`;
+    }
+    const drugCountCell = r.drugCount > 0
+      ? `<span class="badge count">${r.drugCount}</span>`
+      : drugCellMissing;
+    return `
     <tr>
       <td>
         <span class="gene-symbol">${r.gene}</span>
@@ -351,9 +381,11 @@ function renderTable() {
       <td>${r.pdb ? `<a href="https://www.rcsb.org/structure/${r.pdb}" target="_blank">${r.pdb}</a>` : '<span style="color: var(--muted)">—</span>'}</td>
       <td>${methodBadge(r.method)}</td>
       <td class="res-cell">${r.resolution != null ? r.resolution.toFixed(2) + ' Å' : '<span style="color: var(--muted)">—</span>'}</td>
-      <td><span class="badge count">${r.total}</span></td>
+      <td>${drugCell}</td>
+      <td>${drugCountCell}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   resultsBody.innerHTML = `<table><thead><tr>${headerHtml}</tr></thead><tbody>${rowsHtml}</tbody></table>`;
 

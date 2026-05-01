@@ -10,13 +10,20 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.models.schemas import (
+    Drug,
     Gene,
     Protein,
     SearchResponse,
     Structure,
     TargetResult,
 )
-from backend.services import civic_service, gene_service, pdb_service, protein_service
+from backend.services import (
+    civic_service,
+    drug_service,
+    gene_service,
+    pdb_service,
+    protein_service,
+)
 from backend.utils.http import close_client
 
 FRONTEND_DIR = Path(__file__).parent.parent / "public"
@@ -31,19 +38,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="GeneX", lifespan=lifespan)
 
 
-async def _resolve_target(gene_record: dict, structure_limit: int) -> TargetResult:
+async def _resolve_target(
+    gene_record: dict, structure_limit: int, drug_limit: int
+) -> TargetResult:
     gene = Gene(**gene_record)
     protein_data = await protein_service.gene_to_protein(gene.symbol)
     if not protein_data:
-        return TargetResult(gene=gene, protein=None, structures=[], best_structure=None)
+        return TargetResult(gene=gene)
     protein = Protein(**protein_data)
-    structures_raw = await pdb_service.structures_for_protein(
-        protein.uniprot_id, limit=structure_limit
+
+    structures_raw, drugs_raw = await asyncio.gather(
+        pdb_service.structures_for_protein(protein.uniprot_id, limit=structure_limit),
+        drug_service.drugs_for_protein(protein.uniprot_id, limit=drug_limit),
     )
     structures = [Structure(**s) for s in structures_raw]
-    best = structures[0] if structures else None
+    drugs = [Drug(**d) for d in drugs_raw]
     return TargetResult(
-        gene=gene, protein=protein, structures=structures, best_structure=best
+        gene=gene,
+        protein=protein,
+        structures=structures,
+        best_structure=structures[0] if structures else None,
+        drugs=drugs,
+        top_drug=drugs[0] if drugs else None,
     )
 
 
@@ -51,6 +67,7 @@ async def run_pipeline(
     cancer: str,
     gene_limit: int,
     structure_limit: int,
+    drug_limit: int,
 ) -> SearchResponse:
     civic_result = await civic_service.cancer_to_genes(cancer)
     if not civic_result["matched_disease"]:
@@ -65,7 +82,7 @@ async def run_pipeline(
     normalized = await gene_service.normalize_genes(raw_genes)
 
     targets = await asyncio.gather(
-        *(_resolve_target(g, structure_limit) for g in normalized)
+        *(_resolve_target(g, structure_limit, drug_limit) for g in normalized)
     )
 
     return SearchResponse(
@@ -81,9 +98,10 @@ async def search(
     cancer: str = Query(..., min_length=2, description="Cancer type"),
     gene_limit: int = Query(20, ge=0, le=200),
     structure_limit: int = Query(10, ge=1, le=50),
+    drug_limit: int = Query(10, ge=0, le=50),
 ):
     try:
-        return await run_pipeline(cancer, gene_limit, structure_limit)
+        return await run_pipeline(cancer, gene_limit, structure_limit, drug_limit)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Pipeline error: {exc}")
 
@@ -94,8 +112,9 @@ async def export(
     format: str = Query("json", pattern="^(json|csv)$"),
     gene_limit: int = Query(20, ge=0, le=200),
     structure_limit: int = Query(10, ge=1, le=50),
+    drug_limit: int = Query(10, ge=0, le=50),
 ):
-    response = await run_pipeline(cancer, gene_limit, structure_limit)
+    response = await run_pipeline(cancer, gene_limit, structure_limit, drug_limit)
     if format == "json":
         return response
 
@@ -113,10 +132,15 @@ async def export(
             "best_pdb_id",
             "best_method",
             "best_resolution",
+            "top_drug",
+            "top_drug_phase",
+            "top_drug_action",
+            "drug_count",
         ]
     )
     for target in response.results:
         best = target.best_structure
+        top = target.top_drug
         writer.writerow(
             [
                 response.cancer_query,
@@ -129,6 +153,10 @@ async def export(
                 best.pdb_id if best else "",
                 best.method if best else "",
                 best.resolution if best and best.resolution is not None else "",
+                top.name if top else "",
+                top.phase_label if top else "",
+                top.action_type if top else "",
+                len(target.drugs),
             ]
         )
     buffer.seek(0)
