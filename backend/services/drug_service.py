@@ -52,7 +52,7 @@ async def get_molecule(chembl_id: str) -> Optional[dict]:
 
 def _phase_label(max_phase) -> str:
     try:
-        p = int(max_phase) if max_phase is not None else 0
+        p = int(float(max_phase)) if max_phase is not None else 0
     except (TypeError, ValueError):
         p = 0
     return {4: "Approved", 3: "Phase 3", 2: "Phase 2", 1: "Phase 1"}.get(p, "Preclinical")
@@ -87,7 +87,7 @@ async def drugs_for_protein(uniprot_id: str, limit: int = 10) -> list[dict]:
         mech = mech_by_mol.get(chembl_id, {})
         max_phase_raw = mol.get("max_phase")
         try:
-            max_phase = int(max_phase_raw) if max_phase_raw is not None else 0
+            max_phase = int(float(max_phase_raw)) if max_phase_raw is not None else 0
         except (TypeError, ValueError):
             max_phase = 0
         if max_phase < 1:

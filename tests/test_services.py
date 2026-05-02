@@ -223,10 +223,11 @@ async def test_drug_service_ranks_approved_above_clinical_and_drops_preclinical(
             },
         )
     )
+    # ChEMBL returns max_phase as a string like "4.0", not an int — exercise that path.
     molecules = {
-        "CHEMBL1336": {"molecule_chembl_id": "CHEMBL1336", "pref_name": "VEMURAFENIB", "max_phase": 4},
-        "CHEMBL2103743": {"molecule_chembl_id": "CHEMBL2103743", "pref_name": "DABRAFENIB", "max_phase": 3},
-        "CHEMBL999999": {"molecule_chembl_id": "CHEMBL999999", "pref_name": "EXAMPLE", "max_phase": 0},
+        "CHEMBL1336": {"molecule_chembl_id": "CHEMBL1336", "pref_name": "VEMURAFENIB", "max_phase": "4.0"},
+        "CHEMBL2103743": {"molecule_chembl_id": "CHEMBL2103743", "pref_name": "DABRAFENIB", "max_phase": "3.0"},
+        "CHEMBL999999": {"molecule_chembl_id": "CHEMBL999999", "pref_name": "EXAMPLE", "max_phase": "0.0"},
     }
 
     def molecule_side_effect(request):
